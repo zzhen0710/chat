@@ -16,7 +16,8 @@ add_executable(chat_server
     src/server/server_main.cpp
     src/server/server.cpp
     src/server/handle_client.cpp
-    src/threadpool.cpp
+    src/server/threadpool.cpp
+    src/common.cpp
 )
 
 # ============ 客户端可执行文件 ============
@@ -24,6 +25,7 @@ add_executable(chat_server
 add_executable(chat_client
     src/client/client_main.cpp
     src/client/client.cpp
+    src/common.cpp
 )
 
 # 找线程库（std::thread 需要）
