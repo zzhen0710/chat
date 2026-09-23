@@ -2,6 +2,7 @@
 
 #include <sys/socket.h>   // send / recv
 #include <unistd.h>       // close
+#include <arpa/inet.h>    // inet_ntoa
 
 // 加入在线表：先查重（内联），重复返回 false
 bool ChatServer::addClient(int fd, const struct sockaddr_in& addr, const char* name) {

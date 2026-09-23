@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.0)
 # 项目名
 project(chat)
 
-# 使用 C++11
-set(CMAKE_CXX_STANDARD 11)
+# 使用 C++17
+set(CMAKE_CXX_STANDARD 17)
 
 # 头文件搜索路径（src 里 #include "xxx.h" 能找到 include/ 下的头）
 include_directories(${CMAKE_SOURCE_DIR}/include)
