@@ -45,13 +45,6 @@ ChatServer::ChatServer(int port, int thread_num)
 
 // 析构：关闭监听套接字
 ChatServer::~ChatServer() {
-    if (sock_fd_ >= 0) {
-        close(sock_fd_);
-    }
-}
-
-// 析构：关闭套接字
-ChatServer::~ChatServer() {
     if (sock_fd_ >= 0) close(sock_fd_);
 }
 
