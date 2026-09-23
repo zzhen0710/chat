@@ -4,9 +4,10 @@
 #include <cstdlib>      // atoi
 
 // 服务器入口
-// 用法: ./chat_server [端口]  （不传则用默认 CHAT_PORT）
+// 用法: ./chat_server [端口] [线程数]  （不传则用默认 CHAT_PORT, 4）
 int main(int argc, char* argv[]) {
     int port = (argc > 1) ? atoi(argv[1]) : CHAT_PORT;
+    int thread_num = (argc > 2) ? atoi(argv[2]) : 4;
 
     try {
         ChatServer server(port);   // 构造失败会 throw

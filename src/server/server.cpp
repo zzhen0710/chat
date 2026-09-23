@@ -4,6 +4,57 @@
 #include <unistd.h>       // close
 #include <arpa/inet.h>    // inet_ntoa
 
+// 构造：socket → setsockopt → bind → listen；失败抛异常
+ChatServer::ChatServer(int port, int thread_num)
+    : sock_fd_(-1), port_(port), pool_(thread_num)   // 线程池 4 个线程
+{
+    // 1. 创建 TCP 套接字
+    sock_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd_ == -1) {
+        throw std::runtime_error(std::string("socket 失败: ") + strerror(errno));
+    }
+
+    // 2. 端口复用（避免重启时 "Address already in use"）
+    int opt = 1;
+    if (setsockopt(sock_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        close(sock_fd_);
+        throw std::runtime_error(std::string("setsockopt 失败: ") + strerror(errno));
+    }
+
+    // 3. 服务器地址：绑定本机所有网卡 + 指定端口
+    struct sockaddr_in sin{
+        AF_INET,
+        htons(port),
+        { INADDR_ANY }
+    };
+
+    // 4. 绑定
+    if (bind(sock_fd_, (struct sockaddr*)&sin, sizeof(sin)) == -1) {
+        close(sock_fd_);
+        throw std::runtime_error(std::string("bind 失败: ") + strerror(errno));
+    }
+
+    // 5. 监听（backlog = 128）
+    if (listen(sock_fd_, 128) == -1) {
+        close(sock_fd_);
+        throw std::runtime_error(std::string("listen 失败: ") + strerror(errno));
+    }
+
+    LOG("[server] init success, listening on port %d.", port);
+}
+
+// 析构：关闭监听套接字
+ChatServer::~ChatServer() {
+    if (sock_fd_ >= 0) {
+        close(sock_fd_);
+    }
+}
+
+// 析构：关闭套接字
+ChatServer::~ChatServer() {
+    if (sock_fd_ >= 0) close(sock_fd_);
+}
+
 // 加入在线表：先查重（内联），重复返回 false
 bool ChatServer::addClient(int fd, const struct sockaddr_in& addr, const char* name) {
     std::lock_guard<std::mutex> lock(clients_mtx_);

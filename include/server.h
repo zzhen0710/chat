@@ -17,7 +17,7 @@ struct Client {
 // 聊天服务器：监听、accept、线程池处理、广播
 class ChatServer {
 public:
-    explicit ChatServer(int port = CHAT_PORT);
+    explicit ChatServer(int port = CHAT_PORT, int thread_num = 4);  // 构造，默认使用协议端口，4线程
     ~ChatServer();
 
     ChatServer(const ChatServer&) = delete;
