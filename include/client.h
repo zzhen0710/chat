@@ -8,9 +8,9 @@
 // ============================================================
 class ChatClient {
 private:
-    int         sock_fd_;       // 客户端套接字 fd
+    int sock_fd_;               // 客户端套接字 fd
     std::string server_ip_;     // 服务器 IP
-    int         server_port_;   // 服务器端口
+    int server_port_;           // 服务器端口
     std::string name_;          // 昵称
 
     // 发一条消息（返回 0 成功 / -1 失败）

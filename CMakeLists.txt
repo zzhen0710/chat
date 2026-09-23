@@ -11,11 +11,10 @@ set(CMAKE_CXX_STANDARD 11)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # ============ 服务器可执行文件 ============
-# main + 服务器 + 处理客户端 + 线程池
+# main + 服务器  + 线程池
 add_executable(chat_server
     src/server/server_main.cpp
     src/server/server.cpp
-    src/server/handle_client.cpp
     src/server/threadpool.cpp
     src/common.cpp
 )

@@ -92,7 +92,7 @@ void ThreadPool::worker() {
             //   把它唤醒、重新检查谓词。
             //   谓词含 stop_，是为了"停止时"也能成立、让 wait 返回，否则会死锁。
             cv_.wait(lock, [this] {
-                return stop_ || !tasks_.empty();        // 醒来的条件：要停 或 有任务
+                return stop_ || !tasks_.empty();    // 醒来的条件：要停 或 有任务
             });
 
             // 要停 且 队列空 → 退出。
@@ -104,10 +104,10 @@ void ThreadPool::worker() {
                 return;
             }
 
-            task = std::move(tasks_.front());           // 取一个任务（移动）
+            task = std::move(tasks_.front());   // 取一个任务（移动）
             tasks_.pop();
-        }                                               // 出作用域，自动放锁
+        }                                       // 出作用域，自动放锁
 
-        task();                                         // 执行任务（不持锁！）
+        task();     // 执行任务（不持锁）
     }
 }

@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
 
     std::string ip   = argv[1];
     std::string name = argv[2];
-    int         port = (argc > 3) ? atoi(argv[3]) : CHAT_PORT;
+    int port = (argc > 3) ? atoi(argv[3]) : CHAT_PORT;
 
     try {
         ChatClient client(ip, name, port);   // 构造失败会 throw

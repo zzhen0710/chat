@@ -6,11 +6,37 @@
 #include <arpa/inet.h>    // inet_addr
 #include <unistd.h>       // close
 #include <stdexcept>      // std::runtime_error
-#include <poll.h>   // poll
+#include <poll.h>         // poll
 
-// ============================================================
-//  构造：连接服务器（失败 throw）
-// ============================================================
+// 打印消息；返回"是否要退出"（QUIT / KICK → 退）
+static bool printMsg(const Msg& msg) {
+    switch (msg.type) {
+        case MSG_LOGIN:
+            std::cout << ">>> 登录成功" << std::endl;   // 或忽略
+            break;
+
+        case MSG_CHAT:
+            std::cout << msg.name << ": " << msg.text << std::endl;
+            break;
+
+        case MSG_ONLINE:
+        case MSG_OFFLINE:
+        case MSG_DUPNAME:
+            std::cout << ">>> " << msg.text << std::endl;   // "用户-xxx 上 / 下线了"
+            break;
+
+        case MSG_QUIT:
+        case MSG_KICK:
+            std::cout << ">>> " << msg.text << std::endl;   // "你已被踢出"
+            return true;    // ← 要退出
+
+        default:
+            break;
+    }
+    return false;   // ← 不退出
+}
+
+// 构造：连接服务器（失败 throw）
 ChatClient::ChatClient(const std::string& ip, const std::string& name, int port)
     : sock_fd_(-1), server_ip_(ip), server_port_(port), name_(name)
 {
@@ -36,18 +62,14 @@ ChatClient::ChatClient(const std::string& ip, const std::string& name, int port)
     LOG("已连接服务器 %s : %d.", ip.c_str(), port);
 }
 
-// ============================================================
-//  析构：关闭套接字
-// ============================================================
+// 析构：关闭套接字
 ChatClient::~ChatClient() {
     if (sock_fd_ >= 0) {
         close(sock_fd_);
     }
 }
 
-// ============================================================
-//  发一条消息（返回 0 成功 / -1 失败）
-// ============================================================
+// 发一条消息（返回 0 成功 / -1 失败）
 int ChatClient::sendMsg(MsgType type, const std::string& text) {
     Msg msg;
     msg.type = type;
@@ -63,9 +85,7 @@ int ChatClient::sendMsg(MsgType type, const std::string& text) {
     return 0;
 }
 
-// ============================================================
-//  主循环：poll 同时管"终端输入 + 服务器消息"，单线程、实时
-// ============================================================
+// 主循环：poll 同时管"终端输入 + 服务器消息"，单线程、实时
 void ChatClient::run() {
     // 1. 发 LOGIN
     if (sendMsg(MSG_LOGIN) != 0) {
@@ -100,12 +120,12 @@ void ChatClient::run() {
                 break;
             }
             if (!line.empty() && sendMsg(MSG_CHAT, line) != 0) {    // 发送出现问题，再发也发不出去，直接 LOG 后退出
-                LOG("发送失败, 退出.");  
-                break;   // 发送失败 → 退出
+                LOG("发送失败, 退出.");
+                break;
             }
         }
 
-        // 服务器可读 → 收一条、打印
+        // 服务器可读 → 收一条、处理
         if (fds[1].revents & POLLIN) {
             Msg msg;
             if (recv_msg(sock_fd_, msg) != 0) {
@@ -113,14 +133,10 @@ void ChatClient::run() {
                 break;
             }
 
-            // 服务器发来的 QUIT = 被踢
-            if (msg.type == MSG_QUIT) {
-                LOG("你已被服务器踢出!");   // 或 std::cout
+            if (printMsg(msg)) {   // 返回 true = QUIT/KICK → 退
                 break;
             }
-            std::cout << msg.name << ": " << msg.text << std::endl;
         }
     }
-
     LOG("客户端退出");
 }
