@@ -1,7 +1,7 @@
 #include "threadpool.h"
 
 // 构造：创建 n 个工作线程
-explicit ThreadPool::ThreadPool(size_t n = 4) 
+ThreadPool::ThreadPool(size_t n) 
     : stop_(false)
 {
     if (n == 0 || n > 1024) {   // 1024 已约 8GB，防呆
