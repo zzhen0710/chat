@@ -8,6 +8,16 @@
 void ChatServer::handleCmd(const std::string& line) {
     if (line == "quit" || line == "exit") {
         LOG("[server] shutting down...");
+
+        // 广播"服务器关闭"（让客户端知道是被关、不是自己断）
+        Msg bye{};
+        bye.type = MSG_SHUTDOWN;
+        snprintf(bye.text, sizeof(bye.text), "服务器已关闭, 再见.");
+        broadcast(bye);
+
+        // 稍等，让广播发出去（等待 100 ms）
+        usleep(100000);
+
         exit(0);                                  // 直接退出进程
 
     } else if (line == "count") {

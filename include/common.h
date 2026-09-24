@@ -13,14 +13,15 @@
 
 //  消息类型（协议）
 enum MsgType : uint8_t {
-    MSG_LOGIN    = 1,   // 登录
-    MSG_CHAT     = 2,   // 普通聊天
-    MSG_QUIT     = 3,   // 退出
-    MSG_ONLINE   = 4,   // 系统：上线通知
-    MSG_OFFLINE  = 5,   // 系统：下线通知
-    MSG_KICK     = 6,   // 系统：被踢
-    MSG_DUPNAME  = 7,   // 系统：昵称重复
-    MSG_REJECT   = 8,   // 系统：服务器满、拒绝
+    MSG_LOGIN     = 1,   // 登录
+    MSG_CHAT      = 2,   // 普通聊天
+    MSG_QUIT      = 3,   // 退出
+    MSG_ONLINE    = 4,   // 系统：用户上线通知
+    MSG_OFFLINE   = 5,   // 系统：用户下线通知
+    MSG_KICK      = 6,   // 系统：本用户被踢
+    MSG_DUPNAME   = 7,   // 系统：昵称重复、拒绝
+    MSG_REJECT    = 8,   // 系统：服务器满、拒绝
+    MSG_SHUTDOWN  = 9,   // 系统：服务器关闭
 };
 
 //  消息结构体（定长）

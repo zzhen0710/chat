@@ -28,7 +28,8 @@ static bool printMsg(const Msg& msg) {
 
         case MSG_QUIT:
         case MSG_KICK:
-            std::cout << ">>> " << msg.text << std::endl;   // "你已被踢出"
+        case MSG_SHUTDOWN:
+            std::cout << ">>> " << msg.text << std::endl;   // "下线通知 / 广播"
             return true;    // ← 要退出
 
         default:
