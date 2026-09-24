@@ -43,20 +43,6 @@ void ChatServer::run() {
                 continue;
             }
 
-            // 在线数 >= 线程数 → 拒绝（发 MSG_REJECT、关连接、不处理）
-            if (getClientCount() >= (int)pool_.size()) {
-                LOG("[server] reject(full) | ip=%s port=%d fd=%d | online=%d/%d",
-                    inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port),
-                    fd, getClientCount(), (int)pool_.size());
-
-                Msg busy{};
-                busy.type = MSG_REJECT;
-                snprintf(busy.text, sizeof(busy.text), "服务器繁忙，请稍后再试");
-                send_msg(fd, busy);
-                close(fd);
-                continue;
-            }
-
             LOG("[server] accept | ip = %s port = %d fd = %d",
                 inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), fd);
 
@@ -65,6 +51,7 @@ void ChatServer::run() {
         }
     }
 }
+
 // 构造：socket → setsockopt → bind → listen；失败抛异常
 ChatServer::ChatServer(int port, int thread_num)
     : sock_fd_(-1), port_(port), pool_(thread_num)   // 线程池 4 个线程
@@ -101,52 +88,10 @@ ChatServer::ChatServer(int port, int thread_num)
         throw std::runtime_error(std::string("listen 失败: ") + strerror(errno));
     }
 
-    LOG("[server] init success, listening on port %d.", port);
+    LOG("[server] init success, listening on port %d", port);
 }
 
 // 析构：关闭监听套接字
 ChatServer::~ChatServer() {
     if (sock_fd_ >= 0) close(sock_fd_);
-}
-
-// 加入在线表：先查重（内联），重复返回 false
-bool ChatServer::addClient(int fd, const struct sockaddr_in& addr, const char* name) {
-    std::lock_guard<std::mutex> lock(clients_mtx_);
-
-    // 查重
-    for (const auto& [f, cli] : clients_) {
-        if (strcmp(cli.name, name) == 0) return false;
-    }
-
-    Client cli{fd, {}, addr};
-    snprintf(cli.name, sizeof(cli.name), "%s", name);
-    clients_[fd] = cli;
-    ++client_count_;        // 计数 +1
-
-    return true;
-}
-
-// 移出在线表：获取锁后直接按 fd 删去
-void ChatServer::removeClient(int fd) {
-    std::lock_guard<std::mutex> lock(clients_mtx_);
-    clients_.erase(fd);
-    --client_count_;            // 计数 -1
-}
-
-// 持锁读在线数：和 clients_ 同一把锁，保证读到一致值
-int ChatServer::getClientCount() {
-    std::lock_guard<std::mutex> lock(clients_mtx_);
-    return client_count_;
-}
-
-// 广播给所有在线客户端（except_fd 除外）
-void ChatServer::broadcast(const Msg& msg, int except_fd) {
-    std::lock_guard<std::mutex> lock(clients_mtx_);
-
-    for (const auto& [fd, cli] : clients_) {
-        if (fd == except_fd) continue;      // 跳过发起者
-        if (send_msg(fd, msg) != 0) {
-            LOG("广播失败, fd = %d", fd);     // 该客户端可能已断
-        }
-    }
 }

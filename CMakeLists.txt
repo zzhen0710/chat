@@ -15,6 +15,8 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 add_executable(chat_server
     src/server/server_main.cpp
     src/server/server.cpp
+    src/server/cmd.cpp
+    src/server/handle_client.cpp
     src/server/threadpool.cpp
     src/common.cpp
 )

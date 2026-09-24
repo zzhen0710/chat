@@ -40,13 +40,15 @@ private:
     int getClientCount();
 
     // 业务
-    void handleClient(int fd, const struct sockaddr_in& addr);   // 线程池里跑：一个客户端的生命周期
-    void broadcast(const Msg& msg, int except_fd = -1);          // 广播（except_fd 除外）
-
+    void handleClient(int fd, const struct sockaddr_in& addr); // 线程池里跑：一个客户端的生命周期
+    void broadcast(const Msg& msg, int except_fd = -1);        // 广播（except_fd 除外）
+    // 评估是否接收新客户端：满/重名 → 拒绝（发消息 + 关），返回 false
+    bool acceptClient(int fd, const struct sockaddr_in& addr, const char* name);
+    
     // 指令
     void handleCmd(const std::string& line);   // 终端指令
     void kickClient(const std::string& name);  // 踢人
-    void ChatServer::listClients();  // 显示所有在线用户
+    void listClients();  // 显示所有在线用户
 };
 
 #endif

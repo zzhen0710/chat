@@ -8,6 +8,35 @@
 #include <stdexcept>      // std::runtime_error
 #include <poll.h>         // poll
 
+// 打印消息；返回"是否要退出"（QUIT / KICK → 退）
+static bool printMsg(const Msg& msg) {
+    switch (msg.type) {
+        case MSG_LOGIN:
+            std::cout << ">>> 登录成功" << std::endl;   // 或忽略
+            break;
+
+        case MSG_CHAT:
+            std::cout << msg.name << ": " << msg.text << std::endl;
+            break;
+
+        case MSG_ONLINE:
+        case MSG_OFFLINE:
+        case MSG_DUPNAME:
+        case MSG_REJECT:
+            std::cout << ">>> " << msg.text << std::endl;   // "普通系统广播"
+            break;
+
+        case MSG_QUIT:
+        case MSG_KICK:
+            std::cout << ">>> " << msg.text << std::endl;   // "你已被踢出"
+            return true;    // ← 要退出
+
+        default:
+            break;
+    }
+    return false;   // ← 不退出
+}
+
 // 主循环：poll 同时管"终端输入 + 服务器消息"，单线程、实时
 void ChatClient::run() {
     // 1. 发 LOGIN
@@ -62,35 +91,6 @@ void ChatClient::run() {
         }
     }
     LOG("客户端退出");
-}
-
-// 打印消息；返回"是否要退出"（QUIT / KICK → 退）
-static bool printMsg(const Msg& msg) {
-    switch (msg.type) {
-        case MSG_LOGIN:
-            std::cout << ">>> 登录成功" << std::endl;   // 或忽略
-            break;
-
-        case MSG_CHAT:
-            std::cout << msg.name << ": " << msg.text << std::endl;
-            break;
-
-        case MSG_ONLINE:
-        case MSG_OFFLINE:
-        case MSG_DUPNAME:
-        case MSG_REJECT:
-            std::cout << ">>> " << msg.text << std::endl;   // "普通系统广播"
-            break;
-
-        case MSG_QUIT:
-        case MSG_KICK:
-            std::cout << ">>> " << msg.text << std::endl;   // "你已被踢出"
-            return true;    // ← 要退出
-
-        default:
-            break;
-    }
-    return false;   // ← 不退出
 }
 
 // 构造：连接服务器（失败 throw）
