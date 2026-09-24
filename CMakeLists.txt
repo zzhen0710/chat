@@ -17,7 +17,7 @@ add_executable(chat_server
     src/server/server.cpp
     src/server/cmd.cpp
     src/server/handle_client.cpp
-    src/server/threadpool.cpp
+    src/threadpool.cpp
     src/common.cpp
 )
 
