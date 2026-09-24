@@ -20,6 +20,7 @@ enum MsgType : uint8_t {
     MSG_OFFLINE  = 5,   // 系统：下线通知
     MSG_KICK     = 6,   // 系统：被踢
     MSG_DUPNAME  = 7,   // 系统：昵称重复
+    MSG_REJECT   = 8,   // 系统：服务器满、拒绝
 };
 
 //  消息结构体（定长）

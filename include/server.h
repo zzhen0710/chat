@@ -29,17 +29,24 @@ private:
     int sock_fd_;           // 监听 socket
     int port_;              // 端口
     ThreadPool pool_;       // 线程池
+    int client_count_ = 0;   // 在线客户端数（和 clients_ 同锁保护）
 
     std::unordered_map<int, Client> clients_;   // 在线客户端（fd → Client）
     std::mutex clients_mtx_;                    // 保护 clients_
 
-    // 增删（都加锁）
+    // 增删读（都持同锁操作，注意不能嵌套防止死锁）
     bool addClient(int fd, const struct sockaddr_in& addr, const char* name);
     void removeClient(int fd);
+    int getClientCount();
 
     // 业务
     void handleClient(int fd, const struct sockaddr_in& addr);   // 线程池里跑：一个客户端的生命周期
     void broadcast(const Msg& msg, int except_fd = -1);          // 广播（except_fd 除外）
+
+    // 指令
+    void handleCmd(const std::string& line);   // 终端指令
+    void kickClient(const std::string& name);  // 踢人
+    void ChatServer::listClients();  // 显示所有在线用户
 };
 
 #endif

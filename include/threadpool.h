@@ -19,6 +19,7 @@ public:
     ThreadPool& operator=(const ThreadPool&) = delete;
 
     void add_task(Task task);                           // 添加任务到任务队列
+    size_t size() const { return workers_.size(); }     // 获取线程池线程数
 
 private:
     void worker();                          // 工作线程本身：循环利用 cv_ 监测并取任务、执行

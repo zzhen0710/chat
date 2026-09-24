@@ -8,6 +8,62 @@
 #include <stdexcept>      // std::runtime_error
 #include <poll.h>         // poll
 
+// 主循环：poll 同时管"终端输入 + 服务器消息"，单线程、实时
+void ChatClient::run() {
+    // 1. 发 LOGIN
+    if (sendMsg(MSG_LOGIN) != 0) {
+        LOG("登录失败.");
+        return;
+    }
+
+    // 2. poll 监视两个 fd：stdin（终端）+ sock（服务器）
+    struct pollfd fds[2];
+    fds[0].fd = STDIN_FILENO;   // 终端
+    fds[0].events = POLLIN;
+    fds[1].fd = sock_fd_;       // 服务器
+    fds[1].events = POLLIN;
+
+    while (true) {
+        fds[0].revents = fds[1].revents = 0;    // 清空上次的就绪标志，poll 会重新填写
+        int n = poll(fds, 2, -1);   // 阻塞，等任一 fd 可读
+        if (n < 0) {
+            if (errno == EINTR) continue;   // 被信号打断，重试
+            ERR_LOG("poll error");
+            break;
+        }
+
+        // 终端可读 → 读一行、发送
+        if (fds[0].revents & POLLIN) {
+            std::string line;
+            if (!std::getline(std::cin, line)) break;   // 输入结束(EOF)
+
+            if (line == "quit") {
+                sendMsg(MSG_QUIT);
+                LOG("你已退出.");
+                break;
+            }
+            if (!line.empty() && sendMsg(MSG_CHAT, line) != 0) {    // 发送出现问题，再发也发不出去，直接 LOG 后退出
+                LOG("发送失败, 退出.");
+                break;
+            }
+        }
+
+        // 服务器可读 → 收一条、处理
+        if (fds[1].revents & POLLIN) {
+            Msg msg;
+            if (recv_msg(sock_fd_, msg) != 0) {
+                LOG("与服务器断开.");   // 连接断
+                break;
+            }
+
+            if (printMsg(msg)) {   // 返回 true = QUIT/KICK → 退
+                break;
+            }
+        }
+    }
+    LOG("客户端退出");
+}
+
 // 打印消息；返回"是否要退出"（QUIT / KICK → 退）
 static bool printMsg(const Msg& msg) {
     switch (msg.type) {
@@ -22,7 +78,8 @@ static bool printMsg(const Msg& msg) {
         case MSG_ONLINE:
         case MSG_OFFLINE:
         case MSG_DUPNAME:
-            std::cout << ">>> " << msg.text << std::endl;   // "用户-xxx 上 / 下线了"
+        case MSG_REJECT:
+            std::cout << ">>> " << msg.text << std::endl;   // "普通系统广播"
             break;
 
         case MSG_QUIT:
@@ -83,60 +140,4 @@ int ChatClient::sendMsg(MsgType type, const std::string& text) {
         return -1;
     }
     return 0;
-}
-
-// 主循环：poll 同时管"终端输入 + 服务器消息"，单线程、实时
-void ChatClient::run() {
-    // 1. 发 LOGIN
-    if (sendMsg(MSG_LOGIN) != 0) {
-        LOG("登录失败.");
-        return;
-    }
-
-    // 2. poll 监视两个 fd：stdin（终端）+ sock（服务器）
-    struct pollfd fds[2];
-    fds[0].fd     = STDIN_FILENO;   // 终端
-    fds[0].events = POLLIN;
-    fds[1].fd     = sock_fd_;       // 服务器
-    fds[1].events = POLLIN;
-
-    while (true) {
-        fds[0].revents = fds[1].revents = 0;    // 清空上次的就绪标志，poll 会重新填写
-        int n = poll(fds, 2, -1);   // 阻塞，等任一 fd 可读
-        if (n < 0) {
-            if (errno == EINTR) continue;   // 被信号打断，重试
-            ERR_LOG("poll error");
-            break;
-        }
-
-        // 终端可读 → 读一行、发送
-        if (fds[0].revents & POLLIN) {
-            std::string line;
-            if (!std::getline(std::cin, line)) break;   // 输入结束(EOF)
-
-            if (line == "quit") {
-                sendMsg(MSG_QUIT);
-                LOG("你已退出.");
-                break;
-            }
-            if (!line.empty() && sendMsg(MSG_CHAT, line) != 0) {    // 发送出现问题，再发也发不出去，直接 LOG 后退出
-                LOG("发送失败, 退出.");
-                break;
-            }
-        }
-
-        // 服务器可读 → 收一条、处理
-        if (fds[1].revents & POLLIN) {
-            Msg msg;
-            if (recv_msg(sock_fd_, msg) != 0) {
-                LOG("与服务器断开.");   // 连接断
-                break;
-            }
-
-            if (printMsg(msg)) {   // 返回 true = QUIT/KICK → 退
-                break;
-            }
-        }
-    }
-    LOG("客户端退出");
 }

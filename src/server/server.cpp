@@ -1,9 +1,70 @@
 #include "server.h"
 
-#include <sys/socket.h>   // send / recv
 #include <unistd.h>       // close
 #include <arpa/inet.h>    // inet_ntoa
+#include <poll.h>         // poll
+#include <iostream>       // std::cin / std::getline
 
+// 服务器主循环：poll 同时管"终端指令 + 新连接"
+void ChatServer::run() {
+    LOG("[server] listening on port %d, waiting...", port_);
+
+    struct pollfd fds[2];
+    fds[0].fd = STDIN_FILENO;   // 终端
+    fds[0].events = POLLIN;
+    fds[1].fd = sock_fd_;       // 监听 socket
+    fds[1].events = POLLIN;
+
+    while (true) {
+        fds[0].revents = fds[1].revents = 0;   // 清空上次就绪标志
+        int n = poll(fds, 2, -1);              // 阻塞，等任一可读
+        if (n < 0) {
+            if (errno == EINTR) continue;      // 被信号打断，重试
+            ERR_LOG("poll error");
+            break;
+        }
+
+        // 终端可读 → 读一行、处理指令
+        if (fds[0].revents & POLLIN) {
+            std::string line;
+            if (!std::getline(std::cin, line)) break;   // EOF
+            handleCmd(line);
+        }
+
+        // 监听 socket 可读 → accept、交给线程池
+        if (fds[1].revents & POLLIN) {
+            struct sockaddr_in cli_addr{};
+            socklen_t cli_len = sizeof(cli_addr);
+
+            int fd = accept(sock_fd_, (struct sockaddr*)&cli_addr, &cli_len);
+            if (fd == -1) {
+                if (errno == EINTR) continue;
+                ERR_LOG("accept error");
+                continue;
+            }
+
+            // 在线数 >= 线程数 → 拒绝（发 MSG_REJECT、关连接、不处理）
+            if (getClientCount() >= (int)pool_.size()) {
+                LOG("[server] reject(full) | ip=%s port=%d fd=%d | online=%d/%d",
+                    inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port),
+                    fd, getClientCount(), (int)pool_.size());
+
+                Msg busy{};
+                busy.type = MSG_REJECT;
+                snprintf(busy.text, sizeof(busy.text), "服务器繁忙，请稍后再试");
+                send_msg(fd, busy);
+                close(fd);
+                continue;
+            }
+
+            LOG("[server] accept | ip = %s port = %d fd = %d",
+                inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), fd);
+
+            // 每个连接一个任务
+            pool_.add_task([this, fd, cli_addr] { handleClient(fd, cli_addr); });
+        }
+    }
+}
 // 构造：socket → setsockopt → bind → listen；失败抛异常
 ChatServer::ChatServer(int port, int thread_num)
     : sock_fd_(-1), port_(port), pool_(thread_num)   // 线程池 4 个线程
@@ -60,6 +121,7 @@ bool ChatServer::addClient(int fd, const struct sockaddr_in& addr, const char* n
     Client cli{fd, {}, addr};
     snprintf(cli.name, sizeof(cli.name), "%s", name);
     clients_[fd] = cli;
+    ++client_count_;        // 计数 +1
 
     return true;
 }
@@ -68,6 +130,13 @@ bool ChatServer::addClient(int fd, const struct sockaddr_in& addr, const char* n
 void ChatServer::removeClient(int fd) {
     std::lock_guard<std::mutex> lock(clients_mtx_);
     clients_.erase(fd);
+    --client_count_;            // 计数 -1
+}
+
+// 持锁读在线数：和 clients_ 同一把锁，保证读到一致值
+int ChatServer::getClientCount() {
+    std::lock_guard<std::mutex> lock(clients_mtx_);
+    return client_count_;
 }
 
 // 广播给所有在线客户端（except_fd 除外）
@@ -79,86 +148,5 @@ void ChatServer::broadcast(const Msg& msg, int except_fd) {
         if (send_msg(fd, msg) != 0) {
             LOG("广播失败, fd = %d", fd);     // 该客户端可能已断
         }
-    }
-}
-
-// 处理一个客户端（线程池里跑）
-// 流程：登录 → 广播上线 → 循环收（CHAT 广播 / QUIT 退）→ 下线 + 广播
-void ChatServer::handleClient(int fd, const struct sockaddr_in& addr) {
-    Msg msg{};
-
-    // 1. 先收 LOGIN（拿昵称）
-    if (recv_msg(fd, msg) != 0) {          // ← 收！
-        close(fd);
-        return;
-    }
-
-    // 2. 加入在线表（先昵称查重）
-    if (!addClient(fd, addr, msg.name)) {
-        LOG("[server] duplicate name rejected | ip = %s port = %d fd = %d name = %s",
-            inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), fd, msg.name);
-        close(fd);
-        return;
-    }
-    LOG("[server] user online | ip = %s port = %d fd = %d name = %s ",
-        inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), fd, msg.name);
-
-    // 3. 广播"上线"（排除上线的用户自己）
-    Msg notice{};
-    notice.type = MSG_ONLINE;   // 通过 type 判断类型，name 为空串
-    snprintf(notice.text, sizeof(notice.text), "用户-%s 上线了!", msg.name);
-    broadcast(notice, fd);
-
-    // 4. 循环收消息
-    while (true) {
-        if (recv_msg(fd, msg) != 0) {
-            LOG("[server] user disconnected | ip = %s port = %d fd = %d name = %s",
-                inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), fd, msg.name);
-            break;
-        }
-
-        if (msg.type == MSG_CHAT) {
-            broadcast(msg, fd);        // 聊天 → 广播给别人
-        } else if (msg.type == MSG_QUIT) {
-            break;                     // 主动退出
-        }
-    }
-
-    // 5. 下线：从在线列表移除 + 关闭套接字 + 广播信息
-    removeClient(fd);
-    close(fd);
-    LOG("[server] user offline | ip = %s port = %d fd = %d name = %s",
-        inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), fd, msg.name);
-
-    Msg bye{};
-    bye.type = MSG_OFFLINE;
-    snprintf(bye.text, sizeof(bye.text), "用户-%s 已下线", msg.name);
-    
-    broadcast(bye);
-}
-
-// 服务器主循环：accept → 丢给线程池处理
-void ChatServer::run() {
-    LOG("[server] listening on port %d, waiting...", port_);
-
-    while (true) {
-        struct sockaddr_in cli_addr{};
-        socklen_t cli_len = sizeof(cli_addr);
-
-        // 阻塞 accept
-        int fd = accept(sock_fd_, (struct sockaddr*)&cli_addr, &cli_len);
-        if (fd == -1) {
-            if (errno == EINTR) continue;   // 被打断，重试
-            ERR_LOG("accept error");
-            continue;
-        }
-
-        LOG("[server] accept | ip = %s port = %d fd = %d",
-            inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), fd);
-
-        // 交给线程池：每个客户端一个任务，绑定参数后线程自启动
-        pool_.add_task([this, fd, cli_addr] {
-            handleClient(fd, cli_addr);
-        });
     }
 }
