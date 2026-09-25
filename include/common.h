@@ -7,7 +7,7 @@
 #include <string>       // std::string
 
 //  协议常量（双方约定）
-#define CHAT_PORT   8964          // 服务器端口
+#define CHAT_PORT   1314          // 服务器端口
 #define NAME_SIZE   32            // 昵称最大长度
 #define TEXT_SIZE   1024          // 消息正文最大长度
 
