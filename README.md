@@ -18,8 +18,8 @@ cmake --build build
 ## 运行
 
 ```bash
-# 服务器：端口 线程数（都可省，默认 8964 / 4）
-./chat_server 8964 4
+# 服务器：端口 线程数（都可省，默认 1314 / 4）
+./chat_server 1314 4
 
 # 客户端：IP 昵称 [端口]
 ./chat_client 127.0.0.1 张三
