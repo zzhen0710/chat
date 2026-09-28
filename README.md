@@ -63,10 +63,6 @@ chat/
 │       ├── handle_client.cpp
 │       └── cmd.cpp
 └── build/              # CMake 中间文件（不提交 Git）
-    ├── CMakeCache.txt
-    ├── CMakeFiles/     # 各目标的 .o、依赖、构建规则
-    ├── Makefile
-    └── ...
 ```
 
 > `build/` 为 CMake 构建目录，存放中间文件（`.o`、缓存、Makefile 等），
@@ -141,6 +137,71 @@ chat/
 
 ---
 
+## 服务器的异步处理模型（关键设计）
+
+服务器要在"一个主循环"里**同时**处理三件事，且互不阻塞：
+
+| 事件源 | 触发 | 处理 |
+|--------|------|------|
+| **终端 stdin** | 用户敲指令 | `handleCmd` |
+| **监听 socket** | 新客户端连接 | `accept` → 投递任务 |
+| **客户端 socket** | 客户端发来消息 | 线程池里的 `handleClient` 收/广播 |
+
+### 1. `run` 用 `poll` 同时管"stdin + 监听 socket"
+
+```cpp
+struct pollfd fds[2];
+fds[0].fd = STDIN_FILENO;  fds[0].events = POLLIN;   // 终端
+fds[1].fd = sock_fd_;      fds[1].events = POLLIN;   // 监听 socket
+
+while (true) {
+    poll(fds, 2, -1);                       // 阻塞，等任一可读
+    if (fds[0].revents & POLLIN) {          // 终端可读
+        std::getline(std::cin, line);
+        handleCmd(line);                    // 处理指令
+    }
+    if (fds[1].revents & POLLIN) {          // 有新连接
+        int fd = accept(...);
+        pool_.add_task([this, fd, addr]{ handleClient(fd, addr); });
+    }
+}
+```
+
+**要点**：**`poll` 让"终端"和"监听"都"不阻塞主循环"** —— **谁可读处理谁** ——
+**`stdin` 不会"卡住 accept"、`accept` 不会"卡住指令"。**
+
+### 2. `accept` 只"投递"，不"处理"
+
+**新连接 `accept` 后** —— **`pool_.add_task(handleClient)`** —— **立刻返回、继续 `poll`**。
+**`handleClient`（可能阻塞在 `recv_msg`）在线程池的"工作线程"里跑** —— **不占主循环。**
+
+### 3. `handleClient` 在"工作线程"里跑 —— 每个客户端一个任务
+
+- **`recv_msg` 阻塞** —— **只"这个工作线程"等** —— **不影响主循环、不影响别的客户端**
+- **线程池"固定线程数"** —— **在线数 ≥ 线程数 → 拒绝**（`MSG_REJECT`）—— **防"线程耗尽"**
+
+### 4. 关键点：**"三件事"各在"不同执行流"**
+
+```
+主循环（run）:
+  ├─ poll: stdin 可读   → handleCmd        （主线程，快）
+  ├─ poll: listen 可读  → accept + add_task（主线程，快）
+  └─ 工作线程池:
+        └─ handleClient（每客户端一个）:
+             recv_msg（阻塞）→ 广播 / 下线
+```
+
+**"终端指令"和"新连接"在"主线程"（快、不阻塞）；"客户端消息"在"线程池"（可阻塞、并发）。**
+
+### 5. `cmd.cpp` 的指令 —— "主线程里直接跑"
+
+**`handleCmd`（`count`/`list`/`kick`/`quit`）** —— **在 `run` 的 `poll` 里被调** ——
+**"主线程、同步"** —— **"快"** —— **"不阻塞"。**
+
+**`kickClient`** —— **"找 `fd`、发 `MSG_KICK`、广播"** —— **"锁内找、锁外发"** —— **不"持锁 `send`"。**
+
+---
+
 ## 消息类型（枚举）
 
 | 值 | 类型 | 方向 | 说明 |
@@ -162,7 +223,7 @@ chat/
 - **语言 / 标准**：C++11
 - **网络**：TCP socket（`socket` / `bind` / `listen` / `accept` / `recv` / `send`）
 - **并发**：`std::thread`、`std::mutex`、`std::condition_variable`、线程池（生产者-消费者）
-- **I/O 多路复用**：`poll`（客户端、服务器主循环）
+- **I/O 多路复用**：`poll`（客户端、服务器主循环，同时管"终端 + socket"）
 - **语法 / 特性**：`std::function` / lambda（任务）、`unordered_map`（在线表）、
   `enum : uint8_t`（消息类型）、RAII、`= delete`、`explicit`、结构化绑定
 - **构建**：CMake
